@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能图像分析系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .card { box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        #imagePreview img { max-width: 100%; height: auto; }
+        #output { white-space: pre-wrap; word-break: break-word; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">智能图像分析系统</a>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title">上传图片并提问</h5>
+                        <div class="mb-3">
+                            <label for="modeSelector" class="form-label">选择模式</label>
+                            <select id="modeSelector" class="form-select">
+                                <option value="default">默认模式</option>
+                                <option value="invoice">发票模式</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="questionInput" class="form-label">问题</label>
+                            <input type="text" class="form-control" id="questionInput" placeholder="请输入您的问题">
+                        </div>
+                        <div class="mb-3">
+                            <label for="imageInput" class="form-label">选择图片</label>
+                            <input type="file" class="form-control" id="imageInput" accept="image/*">
+                        </div>
+                        <button id="submitButton" class="btn btn-primary">提交</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">图片预览</h5>
+                        <div id="imagePreview" class="mt-2"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">分析结果 
+                            <button id="toggleConfidence" class="btn btn-sm btn-outline-secondary float-end">显示置信度</button>
+                        </h5>
+                        <div id="output" class="mt-3 bg-light p-3 rounded"></div>
+                        <div id="stats" class="mt-2 text-muted"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const modeSelector = document.getElementById('modeSelector');
+        const questionInput = document.getElementById('questionInput');
+        const imageInput = document.getElementById('imageInput');
+        const submitButton = document.getElementById('submitButton');
+        const outputDiv = document.getElementById('output');
+        const imagePreview = document.getElementById('imagePreview');
+        const statsDiv = document.getElementById('stats');
+        const toggleConfidenceButton = document.getElementById('toggleConfidence');
+
+        let showConfidence = false;
+        let fullResults = [];
+        let startTime;
+        let characterCount = 0;
+
+        imageInput.addEventListener('change', () => {
+            const file = imageInput.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imagePreview.innerHTML = `<img src="${e.target.result}" alt="图片预览" class="img-fluid rounded">`;
+                };
+                reader.readAsDataURL(file);
+            } else {
+                imagePreview.innerHTML = "";
+            }
+        });
+
+        modeSelector.addEventListener('change', () => {
+            if (modeSelector.value === 'invoice') {
+                questionInput.value = '发票分析';
+                questionInput.disabled = true;
+            } else {
+                questionInput.value = '';
+                questionInput.disabled = false;
+            }
+        });
+
+        toggleConfidenceButton.addEventListener('click', () => {
+            showConfidence = !showConfidence;
+            toggleConfidenceButton.textContent = showConfidence ? "隐藏置信度" : "显示置信度";
+            updateOutput();
+        });
+
+        function updateOutput() {
+            outputDiv.textContent = "";
+            characterCount = 0;
+            if (modeSelector.value === 'invoice') {
+                if (showConfidence) {
+                    let meet_quotation_times = 0
+                    let begin_record = false
+                    let count = 0
+                    let temp = 0
+                    for (const fullResult of fullResults) {
+                        characterCount += fullResult.text.length;
+                        outputDiv.textContent += fullResult.text
+                        temp += fullResult.confidence
+                        count += 1
+                        if (fullResult.text.includes(":")) {
+                            temp = 0
+                            meet_quotation_times = 0
+                            begin_record = true
+                            count = 0
+                        }
+                        else if (fullResult.text.includes("\"")) {
+                            meet_quotation_times += Array.from(fullResult.text).reduce((count, char) => {
+                                return count + (char === "\"")
+                            }, 0)
+                            if ((meet_quotation_times >= 2) && begin_record) {
+                                begin_record = false
+                                if (outputDiv.textContent.endsWith("\n")) {
+                                    outputDiv.textContent = outputDiv.textContent.slice(0, -1);
+                                    outputDiv.textContent += ` (${(temp/count).toFixed(4)})\n`;
+                                }
+                                else {
+                                    outputDiv.textContent += ` (${(temp/count).toFixed(4)})`;
+                                }
+                            }
+                        }
+                    }
+                }
+                else{
+                    fullResults.forEach(result => {
+                        outputDiv.textContent += result.text;
+                        characterCount += result.text.length;
+                    });
+                }
+            }
+            else {
+                fullResults.forEach(result => {
+                outputDiv.textContent += result.text;
+                characterCount += result.text.length;
+                if (showConfidence && result.confidence !== null) {
+                    outputDiv.textContent += ` (${result.confidence.toFixed(4)})`;
+                    }
+                });
+            }
+            updateStats();
+        }
+
+        function updateStats() {
+            const endTime = new Date();
+            const responseTime = (endTime - startTime) / 1000;
+            statsDiv.textContent = `字符数: ${characterCount}, 响应时间: ${responseTime.toFixed(2)}秒`;
+        }
+
+        submitButton.addEventListener('click', () => {
+            outputDiv.textContent = "正在分析,请稍候...";
+            statsDiv.textContent = "";
+            fullResults = [];
+            characterCount = 0;
+            startTime = new Date();
+
+            let question = questionInput.value;
+            const imageFile = imageInput.files[0];
+
+            if (modeSelector.value === 'invoice') {
+                const json_format = {
+                    "PO_NUMBER": "",
+                    "SUBSIDIARY": "",
+                    "VENDOR": "",
+                    "CURRENCY": "",
+                    "REFERENCE NO.": "",
+                    "DATE": "",
+                    "LOCATION": "",
+                    "PAYMENT TERMS": "",
+                    "POSTING PERIOD": "",
+                    "DUE DATE": "",
+                    "DISCOUNT DATE": "",
+                    "MEMO": "",
+                    "CALCULATED AMOUNT": "",
+                    "items": [
+                        {
+                            "qty": "",
+                            "description": "",
+                            "unit price": "",
+                            "amount": ""
+                        }
+                    ]
+                };
+                question = `
+                    This is an invoice picture.
+                    You should try to fulfill the invoice content in JSON format:
+                    ${JSON.stringify(json_format, null, 2)}
+                    If any one of qty, unit price or amount is missing, 
+                    you need to complete it according to the equation qty * unit price = amount
+                    You should only return the pure JSON format data without any other content.
+                `;
+            }
+
+            if (!question || !imageFile) {
+                alert("请选择图片" + (modeSelector.value === 'default' ? "并输入问题" : ""));
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('image', imageFile);
+            formData.append('question', question);
+            fetch('https://7fb1-115-66-5-192.ngrok-free.app/stream', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                function readChunk() {
+                    reader.read().then(({ done, value }) => {
+                        if (done) {
+                            console.log("分析完成");
+                            updateStats();
+                            return;
+                        }
+                        const textChunk = decoder.decode(value);
+                        const lines = textChunk.split('\n');
+                        lines.forEach(line => {
+                            if (line.trim()) {
+                                const result = JSON.parse(line);
+                                fullResults.push(result);
+                                updateOutput();
+                            }
+                        });
+                        readChunk(); 
+                    });
+                }
+
+                readChunk();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                outputDiv.textContent = "发生错误：" + error;
+            });
+        });
+    </script>
+</body>
+</html>
