@@ -10,6 +10,29 @@
         .card { box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
         #filePreview img { max-width: 100%; height: auto; }
         #output { white-space: pre-wrap; word-break: break-word; }
+        .invoice-table, .items-table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+        }
+        .invoice-table td, .items-table td, .items-table th {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+        .invoice-table tr:nth-child(even), .items-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .invoice-table tr:hover, .items-table tr:hover {
+            background-color: #f1f1f1;
+        }
+        .invoice-table td:first-child {
+            font-weight: bold;
+            width: 30%;
+        }
+        .items-table th {
+            background-color: #4CAF50;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -113,6 +136,18 @@
             showConfidence = !showConfidence;
             toggleConfidenceButton.textContent = showConfidence ? "Hide Confidence" : "Show Confidence";
             updateOutput();
+            if (modeSelector.value === 'invoice' && showConfidence === true) {
+                try {
+                    const resultData = parseInvoiceData(outputDiv.textContent);
+                    createInvoiceTable(resultData);
+                } catch (error) {
+                    console.error('Parsing error:', error);
+                    outputDiv.textContent = "Error parsing data: " + error;
+                }
+            } else {
+                // 清除 "切换 JSON/表格 视图" 按钮和相关控件
+                clearToggleButton();
+            }
         });
 
         function updateOutput() {
@@ -178,6 +213,9 @@
         }
 
         submitButton.addEventListener('click', () => {
+            // 清除 "切换 JSON/表格 视图" 按钮和相关控件
+            clearToggleButton();
+            
             outputDiv.textContent = "Analyzing, please wait...";
             statsDiv.textContent = "";
             fullResults = [];
@@ -235,11 +273,21 @@
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
 
+                // 在 readChunk 函数中
                 function readChunk() {
                     reader.read().then(({ done, value }) => {
                         if (done) {
                             console.log("Analysis completed");
                             updateStats();
+                            // if (modeSelector.value === 'invoice') {
+                            //     try {
+                            //         const resultData = parseInvoiceData(outputDiv.textContent);
+                            //         createInvoiceTable(resultData);
+                            //     } catch (error) {
+                            //         console.error('Parsing error:', error);
+                            //         outputDiv.textContent = "Error parsing data: " + error;
+                            //     }
+                            // }
                             return;
                         }
                         const textChunk = decoder.decode(value);
@@ -262,6 +310,192 @@
                 outputDiv.textContent = "An error occurred: " + error;
             });
         });
+
+        function parseInvoiceData(dataStr) {
+            const result = {};
+            let currentItem = null;
+            let inItemsArray = false;
+
+            // 将输入字符串拆分为行
+            const lines = dataStr.trim().split('\n');
+
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i].trim();
+
+                // if (line === '{' || line === '}') {
+                //     // 跳过对象的起始和结束符
+                //     continue;
+                // }
+
+                if (line.startsWith('"items":')) {
+                    inItemsArray = true;
+                    result['items'] = [];
+                    continue;
+                }
+
+                if (inItemsArray) {
+                    if (line === '[' || line === ']' || line === '],') {
+                        // 跳过数组的起始和结束符
+                        continue;
+                    }
+                    if (line === '{') {
+                        // 开始新的 item 对象
+                        currentItem = {};
+                        continue;
+                    }
+                    if (line === '},' || line === '}') {
+                        // 结束当前 item 对象
+                        if (currentItem && Object.keys(currentItem).length > 0) {
+                            result['items'].push(currentItem);
+                        }
+                        currentItem = null;
+                        continue;
+                    }
+
+                    // 解析 item 对象的字段
+                    const fieldMatch = line.match(/"([^"]+)":\s*"([^"]*)",?\s*\(([^)]+)\)/);
+                    if (fieldMatch) {
+                        const key = fieldMatch[1];
+                        const value = fieldMatch[2];
+                        const confidence = parseFloat(fieldMatch[3]);
+                        if (currentItem) {
+                            currentItem[key] = { value, confidence };
+                        }
+                    }
+                } else {
+                    // 解析非 items 的字段
+                    const fieldMatch = line.match(/"([^"]+)":\s*"([^"]*)",?\s*\(([^)]+)\)/);
+                    if (fieldMatch) {
+                        const key = fieldMatch[1];
+                        const value = fieldMatch[2];
+                        const confidence = parseFloat(fieldMatch[3]);
+                        result[key] = { value, confidence };
+                    }
+                }
+            }
+
+            console.log('Parsed data:', result); // 调试输出
+            return result;
+        }
+
+        function createInvoiceTable(data) {
+            console.log('Data for table:', data); // 调试输出
+
+            const table = document.createElement('table');
+            table.className = 'invoice-table';
+
+            for (const [key, obj] of Object.entries(data)) {
+                if (key !== 'items') {
+                    const row = table.insertRow();
+                    const keyCell = row.insertCell(0);
+                    const valueCell = row.insertCell(1);
+
+                    keyCell.textContent = key;
+
+                    if (obj && typeof obj === 'object') {
+                        const text = obj.value;
+                        const confidence = obj.confidence;
+                        
+                        // 创建一个 span 元素来包装文本
+                        const textSpan = document.createElement('span');
+                        textSpan.textContent = text;
+                        
+                        // 设置 title 属性，显示置信度
+                        textSpan.title = `confidence: ${confidence.toFixed(4)}`;
+                        
+                        // 在置信度低于阈值时标记背景色
+                        if (confidence < 0.8) {
+                            textSpan.style.backgroundColor = 'red';
+                        }
+                        
+                        // 将 span 元素添加到单元格中
+                        valueCell.appendChild(textSpan);
+                    } else {
+                        valueCell.textContent = '';
+                    }
+                }
+            }
+
+            // 处理 items 数组
+            // 处理 items 数组
+            if (data.items && Array.isArray(data.items)) {
+                const itemsTable = document.createElement('table');
+                itemsTable.className = 'items-table';
+
+                const headerRow = itemsTable.insertRow();
+                ['qty', 'description', 'unit price', 'amount'].forEach(header => {
+                    const th = document.createElement('th');
+                    th.textContent = header;
+                    headerRow.appendChild(th);
+                });
+
+                data.items.forEach(item => {
+                    const row = itemsTable.insertRow();
+                    ['qty', 'description', 'unit price', 'amount'].forEach(key => {
+                        const cell = row.insertCell();
+                        const obj = item[key];
+
+                        if (obj && typeof obj === 'object') {
+                            const text = obj.value;
+                            const confidence = obj.confidence;
+                            
+                            // 创建一个 span 元素来包装文本
+                            const textSpan = document.createElement('span');
+                            textSpan.textContent = text;
+                            
+                            // 设置 title 属性，显示置信度
+                            textSpan.title = `confidence: ${confidence.toFixed(4)}`;
+                            
+                            // 在置信度低于阈值时标记背景色
+                            if (confidence < 0.8) {
+                                textSpan.style.backgroundColor = 'red';
+                            }
+                            
+                            // 将 span 元素添加到单元格中
+                            cell.appendChild(textSpan);
+                        } else {
+                            cell.textContent = '';
+                        }
+                    });
+                });
+
+                // 将 itemsTable 添加到主表格中
+                const itemsRow = table.insertRow();
+                const itemsCell = itemsRow.insertCell();
+                itemsCell.colSpan = 2;
+                itemsCell.appendChild(itemsTable);
+            }
+
+            const toggleButton = document.createElement('button');
+            toggleButton.textContent = '切换 JSON/表格 视图';
+            toggleButton.setAttribute('data-toggle-view', 'true'); // 添加一个属性以便于选择
+            toggleButton.onclick = () => {
+                if (outputDiv.style.display === 'none') {
+                    outputDiv.style.display = 'block';
+                    table.style.display = 'none';
+                } else {
+                    outputDiv.style.display = 'none';
+                    table.style.display = 'block';
+                }
+            };
+
+            outputDiv.parentNode.insertBefore(toggleButton, outputDiv.nextSibling);
+            outputDiv.parentNode.insertBefore(table, toggleButton.nextSibling);
+            table.style.display = 'none';
+        }
+
+        // 添加新的函数来清除 "切换 JSON/表格 视图" 按钮和相关控件
+        function clearToggleButton() {
+            const toggleButton = document.querySelector('button[data-toggle-view]');
+            if (toggleButton) {
+                toggleButton.remove();
+            }
+            const table = document.querySelector('.invoice-table');
+            if (table) {
+                table.remove();
+            }
+            outputDiv.style.display = 'block';
+        }
     </script>
 </body>
 </html>
