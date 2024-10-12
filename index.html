@@ -145,7 +145,7 @@
                     outputDiv.textContent = "Error parsing data: " + error;
                 }
             } else {
-                // 清除 "切换 JSON/表格 视图" 按钮和相关控件
+                // 清除 "Switch to JSON/Table view" 按钮和相关控件
                 clearToggleButton();
             }
         });
@@ -213,7 +213,7 @@
         }
 
         submitButton.addEventListener('click', () => {
-            // 清除 "切换 JSON/表格 视图" 按钮和相关控件
+            // 清除 "Switch to JSON/Table view" 按钮和相关控件
             clearToggleButton();
             
             outputDiv.textContent = "Analyzing, please wait...";
@@ -467,7 +467,7 @@
             }
 
             const toggleButton = document.createElement('button');
-            toggleButton.textContent = '切换 JSON/表格 视图';
+            toggleButton.textContent = 'Switch to JSON/Table view';
             toggleButton.setAttribute('data-toggle-view', 'true'); // 添加一个属性以便于选择
             toggleButton.onclick = () => {
                 if (outputDiv.style.display === 'none') {
@@ -484,7 +484,7 @@
             table.style.display = 'none';
         }
 
-        // 添加新的函数来清除 "切换 JSON/表格 视图" 按钮和相关控件
+        // 添加新的函数来清除 "Switch to JSON/Table view" 按钮和相关控件
         function clearToggleButton() {
             const toggleButton = document.querySelector('button[data-toggle-view]');
             if (toggleButton) {
